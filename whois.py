@@ -1,13 +1,7 @@
-## published by Vine team
-import whois
+async def run(ctx):
+    ctx.log(f"Testing URL: {ctx.url}")
 
-def whoisThis(domain):
-    domain = domain.replace("http://", "")
-    domain = domain.replace("https://", "")
-    domain = domain.strip("/")
-
-    try:
-        whois_info = whois.whois(domain)
-        print(f"{whois_info}\n")
-    except Exception as e:
-        print(e)
+    if ctx.response.status_code == 200:
+        ctx.log("Target is alive ✅")
+    else:
+        ctx.log(f"Target returned {ctx.response.status_code}")
