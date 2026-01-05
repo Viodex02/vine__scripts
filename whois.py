@@ -1,3 +1,5 @@
+## publishedby Vine team
+
 import whois
 
 def whoisThis(domain):
