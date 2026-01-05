@@ -1,5 +1,5 @@
-## publishedby Vine team
-
+## published by Vine team
+import os
 import whois
 
 def whoisThis(domain):
