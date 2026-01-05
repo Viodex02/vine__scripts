@@ -1,7 +1,8 @@
 async def run(ctx):
-    if ctx.url == "https://google.com":
-        ctx.println("this is url rilative to google")
-    if "google" in ctx.response.text:
-        ctx.println("googled found")
+    if "google.com" in ctx.url:
+        ctx.Println("this url is related to google")
+
+    if "google" in ctx.response.text.lower():
+        ctx.Println("google found")
     else:
-        ctx.println("pass")
+        ctx.Println("pass")
