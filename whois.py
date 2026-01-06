@@ -1,70 +1,113 @@
 from urllib.parse import urlparse, parse_qs
-import time
 import re
+import time
 
-class VineCTX:
-    def __init__(self, url, response):
-        self.url = url
-        self.response = response
+async def run(ctx):
+    # -----------------------------
+    # Local helpers (INSIDE run)
+    # -----------------------------
+    def log(level, msg):
+        now = time.strftime("%H:%M:%S")
+        ctx.Println(f"[{now}] [{level}] {msg}")
 
-    # ------------------
-    # Logging
-    # ------------------
-    def now(self):
-        return time.strftime("%H:%M:%S")
+    # -----------------------------
+    # URL Analysis
+    # -----------------------------
+    parsed = urlparse(ctx.url)
 
-    def info(self, msg):
-        print(f"[{self.now()}] [INFO] {msg}")
+    scheme = parsed.scheme
+    host = parsed.hostname
+    port = parsed.port or (443 if scheme == "https" else 80)
+    path = parsed.path or "/"
+    query = parse_qs(parsed.query)
 
-    def warn(self, msg):
-        print(f"[{self.now()}] [WARN] {msg}")
+    log("INFO", f"Target: {host}")
+    log("INFO", f"Scheme: {scheme}")
+    log("INFO", f"Port: {port}")
+    log("INFO", f"Path: {path}")
 
-    def good(self, msg):
-        print(f"[{self.now()}] [OK] {msg}")
+    if query:
+        log("WARN", f"Query params: {list(query.keys())}")
+    else:
+        log("INFO", "No query parameters")
 
-    # ------------------
-    # URL helpers
-    # ------------------
-    def parse_url(self):
-        parsed = urlparse(self.url)
+    # -----------------------------
+    # Response Analysis
+    # -----------------------------
+    res = ctx.response
 
-        return {
-            "scheme": parsed.scheme,
-            "host": parsed.hostname,
-            "port": parsed.port or (443 if parsed.scheme == "https" else 80),
-            "path": parsed.path or "/",
-            "query": parse_qs(parsed.query),
-            "raw_query": parsed.query,
-        }
+    if not res:
+        log("ERROR", "No response object")
+        return
 
-    # ------------------
-    # Response helpers
-    # ------------------
-    def status(self):
-        return self.response.status_code
+    log("INFO", f"Status Code: {res.status_code}")
 
-    def headers(self):
-        return self.response.headers
+    if res.status_code >= 500:
+        log("WARN", "Server error detected")
+    elif res.status_code == 403:
+        log("WARN", "Forbidden response")
+    elif res.status_code == 200:
+        log("OK", "Target is alive")
 
-    def body(self):
-        return self.response.text or ""
+    # -----------------------------
+    # Headers Check
+    # -----------------------------
+    headers = res.headers
 
-    # ------------------
-    # Scanning helpers
-    # ------------------
-    def check_headers(self, required):
-        missing = []
-        for h in required:
-            if h not in self.response.headers:
-                missing.append(h)
-        return missing
+    security_headers = [
+        "content-security-policy",
+        "x-frame-options",
+        "x-content-type-options",
+        "strict-transport-security",
+        "referrer-policy",
+    ]
 
-    def keyword_scan(self, patterns: dict):
-        hits = []
-        body = self.body()
+    missing = []
+    for h in security_headers:
+        if h not in headers:
+            missing.append(h)
 
-        for name, regex in patterns.items():
-            if re.search(regex, body, re.I):
-                hits.append(name)
+    if missing:
+        log("WARN", f"Missing security headers: {', '.join(missing)}")
+    else:
+        log("OK", "All important security headers present")
 
-        return hits
+    # -----------------------------
+    # Body Scan
+    # -----------------------------
+    body = res.text or ""
+    body_lower = body.lower()
+
+    log("INFO", f"Response size: {len(body)} bytes")
+
+    keywords = [
+        "password",
+        "secret",
+        "apikey",
+        "token",
+        "traceback",
+        "exception",
+        "stack trace",
+    ]
+
+    found = []
+    for kw in keywords:
+        if kw in body_lower:
+            found.append(kw)
+
+    if found:
+        for k in found:
+            log("WARN", f"Sensitive keyword found: {k}")
+    else:
+        log("OK", "No sensitive keywords detected")
+
+    # -----------------------------
+    # JS Discovery
+    # -----------------------------
+    js_files = re.findall(r'src=["\'](.*?\.js)["\']', body, re.I)
+    if js_files:
+        log("INFO", f"JavaScript files found ({len(js_files)}):")
+        for js in js_files[:5]:
+            log("INFO", f" - {js}")
+
+    log("INFO", "GitScript finished cleanly")
