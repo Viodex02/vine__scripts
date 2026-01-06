@@ -1,3 +1,4 @@
+import os
 async def run(ctx):
     if ctx.url == "https://google.com":
         print("found a googleSite")
