@@ -1,343 +1,192 @@
-import asyncio
-import httpx
+# ==========================================
+# Vine GitScript - Full Logic Scanner
+# ==========================================
+
 import re
-import json
-import time
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
-# ==========================================================
-# Context Object
-# ==========================================================
+async def run(ctx):
+    """
+    Vine GitScript Entry Point
+    ctx.url       -> string URL
+    ctx.response  -> http response object
+    """
 
-@dataclass
-class ScanContext:
-    url: str
-    method: str = "GET"
-    headers: Dict[str, str] = field(default_factory=dict)
-    response: Optional[httpx.Response] = None
-    start_time: float = field(default_factory=time.time)
-    findings: List[Dict[str, Any]] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    findings = []
 
-    def add_finding(self, name: str, severity: str, description: str, evidence: Any = None):
-        self.findings.append({
+    def log(msg):
+        ctx.Println(msg)
+
+    def add_finding(name, severity, desc):
+        findings.append({
             "name": name,
             "severity": severity,
-            "description": description,
-            "evidence": evidence,
-            "url": self.url
+            "description": desc,
+            "url": ctx.url
         })
 
-# ==========================================================
-# Base Check Class
-# ==========================================================
+    # -----------------------------
+    # URL Parsing
+    # -----------------------------
 
-class BaseCheck:
-    name = "BaseCheck"
-    severity = "info"
+    parsed = urlparse(ctx.url)
 
-    async def run(self, ctx: ScanContext):
-        raise NotImplementedError
+    scheme = parsed.scheme
+    host = parsed.hostname
+    port = parsed.port
+    path = parsed.path or "/"
+    query = parsed.query
 
-# ==========================================================
-# Checks Implementations
-# ==========================================================
+    log(f"Scanning: {scheme}://{host}{path}")
 
-class GoogleDetectionCheck(BaseCheck):
-    name = "Google Detection"
-    severity = "info"
+    if scheme != "https":
+        add_finding(
+            "Insecure Scheme",
+            "low",
+            "Target is not using HTTPS"
+        )
 
-    async def run(self, ctx: ScanContext):
-        if ctx.url == "https://google.com":
-            ctx.add_finding(
-                self.name,
-                self.severity,
-                "Target is exactly google.com",
-                ctx.url
-            )
+    if port and port not in (80, 443):
+        add_finding(
+            "Non Standard Port",
+            "info",
+            f"Port {port} detected"
+        )
 
-        if ctx.response and "google" in ctx.response.text.lower():
-            ctx.add_finding(
-                self.name,
-                self.severity,
-                "Keyword 'google' found in response body"
-            )
+    # -----------------------------
+    # Response Checks
+    # -----------------------------
 
-class StatusCodeCheck(BaseCheck):
-    name = "Status Code Analyzer"
-    severity = "info"
+    if ctx.response is None:
+        log("No response object")
+        return
 
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
+    status = ctx.response.status_code
+    headers = ctx.response.headers
+    body = ctx.response.text or ""
+    body_lower = body.lower()
 
-        code = ctx.response.status_code
+    log(f"Status Code: {status}")
 
-        if code >= 500:
-            ctx.add_finding(
-                self.name,
-                "high",
-                f"Server error detected ({code})"
-            )
-        elif code == 403:
-            ctx.add_finding(
-                self.name,
-                "medium",
-                "403 Forbidden may indicate protected resource"
-            )
-        elif code == 401:
-            ctx.add_finding(
-                self.name,
-                "medium",
-                "401 Unauthorized endpoint detected"
-            )
+    # -----------------------------
+    # Status Logic
+    # -----------------------------
 
-class ServerHeaderLeakCheck(BaseCheck):
-    name = "Server Header Leak"
-    severity = "low"
+    if status >= 500:
+        add_finding(
+            "Server Error",
+            "high",
+            f"Server returned {status}"
+        )
 
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
+    if status in (401, 403):
+        add_finding(
+            "Protected Resource",
+            "medium",
+            f"Received {status}"
+        )
 
-        server = ctx.response.headers.get("Server")
-        powered = ctx.response.headers.get("X-Powered-By")
+    # -----------------------------
+    # Header Analysis
+    # -----------------------------
 
-        if server:
-            ctx.add_finding(
-                self.name,
-                "low",
-                "Server header disclosed",
-                server
-            )
+    if "server" in headers:
+        add_finding(
+            "Server Disclosure",
+            "low",
+            headers.get("server")
+        )
 
-        if powered:
-            ctx.add_finding(
-                self.name,
-                "low",
-                "X-Powered-By header disclosed",
-                powered
-            )
+    if "x-powered-by" in headers:
+        add_finding(
+            "Technology Disclosure",
+            "low",
+            headers.get("x-powered-by")
+        )
 
-class SecurityHeadersCheck(BaseCheck):
-    name = "Security Headers"
-    severity = "medium"
+    # -----------------------------
+    # Security Headers
+    # -----------------------------
 
-    REQUIRED_HEADERS = [
-        "Content-Security-Policy",
-        "X-Frame-Options",
-        "X-Content-Type-Options",
-        "Strict-Transport-Security",
-        "Referrer-Policy"
+    security_headers = [
+        "content-security-policy",
+        "x-frame-options",
+        "x-content-type-options",
+        "strict-transport-security",
+        "referrer-policy"
     ]
 
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
+    missing = []
+    for h in security_headers:
+        if h not in headers:
+            missing.append(h)
 
-        missing = []
+    if missing:
+        add_finding(
+            "Missing Security Headers",
+            "medium",
+            ", ".join(missing)
+        )
 
-        for h in self.REQUIRED_HEADERS:
-            if h not in ctx.response.headers:
-                missing.append(h)
+    # -----------------------------
+    # Sensitive Keywords
+    # -----------------------------
 
-        if missing:
-            ctx.add_finding(
-                self.name,
-                "medium",
-                "Missing security headers",
-                missing
-            )
-
-class SensitiveKeywordCheck(BaseCheck):
-    name = "Sensitive Keywords"
-    severity = "high"
-
-    KEYWORDS = [
+    keywords = [
         "password",
+        "passwd",
         "secret",
-        "api_key",
         "apikey",
+        "api_key",
         "token",
         "authorization",
-        "aws_access_key"
+        "private_key"
     ]
 
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
-
-        body = ctx.response.text.lower()
-
-        for kw in self.KEYWORDS:
-            if kw in body:
-                ctx.add_finding(
-                    self.name,
-                    "high",
-                    f"Sensitive keyword found: {kw}"
-                )
-
-class RegexPatternCheck(BaseCheck):
-    name = "Regex Pattern Scanner"
-    severity = "medium"
-
-    PATTERNS = {
-        "JWT": r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
-        "Email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+",
-        "IP Address": r"\b\d{1,3}(?:\.\d{1,3}){3}\b"
-    }
-
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
-
-        for name, pattern in self.PATTERNS.items():
-            matches = re.findall(pattern, ctx.response.text)
-            if matches:
-                ctx.add_finding(
-                    self.name,
-                    "medium",
-                    f"{name} pattern found",
-                    matches[:5]
-                )
-
-class JavaScriptEndpointDiscovery(BaseCheck):
-    name = "JS Endpoint Discovery"
-    severity = "low"
-
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
-
-        js_urls = re.findall(r'src=["\'](.*?\.js)["\']', ctx.response.text)
-
-        full_urls = []
-        for js in js_urls:
-            full_urls.append(urljoin(ctx.url, js))
-
-        if full_urls:
-            ctx.add_finding(
-                self.name,
-                "low",
-                "JavaScript files discovered",
-                full_urls
-            )
-
-class SimpleWAFDetection(BaseCheck):
-    name = "WAF Detection"
-    severity = "info"
-
-    async def run(self, ctx: ScanContext):
-        if not ctx.response:
-            return
-
-        headers = ctx.response.headers
-
-        waf_signatures = [
-            "cloudflare",
-            "akamai",
-            "sucuri",
-            "imperva"
-        ]
-
-        for sig in waf_signatures:
-            for value in headers.values():
-                if sig in value.lower():
-                    ctx.add_finding(
-                        self.name,
-                        "info",
-                        f"Possible WAF detected: {sig}"
-                    )
-                    return
-
-# ==========================================================
-# Scanner Engine
-# ==========================================================
-
-class AsyncScanner:
-    def __init__(self, timeout: int = 10):
-        self.client = httpx.AsyncClient(
-            timeout=timeout,
-            follow_redirects=True
-        )
-        self.checks: List[BaseCheck] = []
-
-    def register_check(self, check: BaseCheck):
-        self.checks.append(check)
-
-    async def fetch(self, ctx: ScanContext):
-        try:
-            ctx.response = await self.client.request(
-                ctx.method,
-                ctx.url,
-                headers=ctx.headers
-            )
-        except Exception as e:
-            ctx.add_finding(
-                "Request Error",
+    for kw in keywords:
+        if kw in body_lower:
+            add_finding(
+                "Sensitive Keyword",
                 "high",
-                "Failed to fetch URL",
-                str(e)
+                f"Keyword '{kw}' found"
             )
 
-    async def run_checks(self, ctx: ScanContext):
-        for check in self.checks:
-            try:
-                await check.run(ctx)
-            except Exception as e:
-                ctx.add_finding(
-                    "Check Error",
-                    "low",
-                    f"Check {check.name} failed",
-                    str(e)
-                )
+    # -----------------------------
+    # Error Disclosure
+    # -----------------------------
 
-    async def scan(self, url: str) -> ScanContext:
-        ctx = ScanContext(url=url)
+    error_signatures = [
+        "traceback",
+        "stack trace",
+        "fatal error",
+        "exception",
+        "warning:"
+    ]
 
-        await self.fetch(ctx)
-        await self.run_checks(ctx)
+    for err in error_signatures:
+        if err in body_lower:
+            add_finding(
+                "Error Disclosure",
+                "high",
+                err
+            )
 
-        return ctx
+    # -----------------------------
+    # JS Discovery (basic)
+    # -----------------------------
 
-    async def close(self):
-        await self.client.aclose()
+    js_files = re.findall(r'src=["\'](.*?\.js)["\']', body, re.I)
+    if js_files:
+        add_finding(
+            "JavaScript Files",
+            "info",
+            js_files[:10]
+        )
 
-# ==========================================================
-# Entry Point
-# ==========================================================
+    # -----------------------------
+    # Output
+    # -----------------------------
 
-async def run(ctx_url: str):
-    scanner = AsyncScanner()
-
-    # Register checks
-    scanner.register_check(GoogleDetectionCheck())
-    scanner.register_check(StatusCodeCheck())
-    scanner.register_check(ServerHeaderLeakCheck())
-    scanner.register_check(SecurityHeadersCheck())
-    scanner.register_check(SensitiveKeywordCheck())
-    scanner.register_check(RegexPatternCheck())
-    scanner.register_check(JavaScriptEndpointDiscovery())
-    scanner.register_check(SimpleWAFDetection())
-
-    ctx = await scanner.scan(ctx_url)
-
-    print("\n========== Scan Results ==========")
-    print(json.dumps(ctx.findings, indent=2))
-
-    await scanner.close()
-
-# ==========================================================
-# CLI Execution
-# ==========================================================
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) != 2:
-        print("Usage: python scanner.py <url>")
-        sys.exit(1)
-
-    asyncio.run(run(sys.argv[1]))
+    log(f"Findings count: {len(findings)}")
+    for f in findings:
+        log(f"[{f['severity']}] {f['name']} -> {f['description']}")
