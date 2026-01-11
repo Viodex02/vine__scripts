@@ -1,11 +1,10 @@
-from colorama import Fore
+import httpx
 async def run(ctx):
-  code = ctx.response.status_code
-  if code == 200:
-    print(f"[+]{Fore.GREEN} found a {code} code")
-  elif code == 302:
-    print(f"[+]{Fore.YELLOW} found a {code} code")
-  else:
-    print(f"{Fore.RED}unknow code")
+  url = int(input("enter the url")
+            if url == "any":
+              url = http://127.0.01:8000
+  for i in range(0,100):
+    resp = httpx.get(url)
+    print(resp.status_code)
     
     
