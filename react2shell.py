@@ -1,10 +1,9 @@
-REQUIREMENTS = ["sys","time","haslib","re","urllib3","urllib","requests"]
-VERSIONS =  ["v1.0","v1.1"]
 AUTHER = "Perdo Team (VINE team)"
 LICENSE = "Same as vine"
 GITHUB_REPO = "https://github.com/viodex/403bypass"
 IS_CVE_EXPLOIT = "yes,CVE-2025-55182" 
-
+REQUIREMENTS = ["sys","time","haslib","re","urllib3","urllib","requests"]
+VERSIONS =  ["v1.0","v1.1"]
 DESCRIPTION = """
 
 ┌───────────────────────────────────────────────┐
