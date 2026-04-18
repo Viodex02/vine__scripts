@@ -1,9 +1,10 @@
+REQUIREMENTS = ["sys","time","haslib","re","urllib3","urllib","requests"]
+VERSIONS =  ["v1.0","v1.1"]
 AUTHER = "Perdo Team (VINE team)"
 LICENSE = "Same as vine"
 GITHUB_REPO = "https://github.com/viodex/403bypass"
 IS_CVE_EXPLOIT = "yes,CVE-2025-55182" 
-REQUIREMENTS = ["sys","time","haslib","re","urllib3","urllib","requests"]
-VERSIONS =  ["v1.0","v1.1"]
+
 DESCRIPTION = """
 
 ┌───────────────────────────────────────────────┐
@@ -225,8 +226,7 @@ class ExploitEngine:
 
 def run(args):
     printv("NOTE : EngineQ will be disabled and re-enabled after the script ends","info")
-    Help().disableEngineQ()
-    
+    EngineQconfigs.disable()    
     config = ExploitConfig()
 
 
