@@ -226,7 +226,7 @@ class ExploitEngine:
 
 def run(args):
     printv("NOTE : EngineQ will be disabled and re-enabled after the script ends","info")
-    EngineQconfigs.disable()    
+    EngineQconfigs().disable()    
     config = ExploitConfig()
 
 
