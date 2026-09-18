@@ -1,4 +1,12 @@
 {
   "have_updates":"true",
-  "version":"1.2"
+  "latest_version":"1.2",
+  "updates":
+  [
+    "Vine now can enumrate faster",
+    "you have the ability to use script's index number rather than it's name",
+    "4 offical scripts from Perdo team is added",
+    "you hvae the ability to set script's sandbox python's role",
+    "builtin watchdog for enumration  and EngineQ usage"
+  ]
 }
